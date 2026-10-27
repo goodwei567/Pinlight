@@ -117,6 +117,10 @@ The report is written to `test-output\self-test-report.txt`. Version 0.3.2 passe
 - Scrolling capture cannot reconstruct content with no overlapping pixels between samples.
 - The application is unsigned and has no automatic updater.
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
 ## Repository layout
 
 ```text
