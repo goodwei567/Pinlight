@@ -1,0 +1,22 @@
+# Local build and test output
+/build/
+/test-output/
+*.pdb
+
+# Visual Studio and IDE state
+/.vs/
+*.user
+*.suo
+
+# Release binaries are uploaded to GitHub Releases, not committed to source
+/release-assets/*.zip
+/release-assets/*.sha256
+
+# Local application state
+workspace.json
+workspace.json.*
+errors.log
+
+# Operating-system metadata
+Thumbs.db
+Desktop.ini
