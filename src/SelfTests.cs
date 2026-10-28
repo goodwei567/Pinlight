@@ -119,9 +119,10 @@ namespace Pinlight
                 using (Bitmap image = Sample())
                 {
                     string file = repository.StoreImage(image); repository.AddCapture(image, file);
-                    repository.State.Settings.DefaultOpacity = 75; repository.Save();
+                    repository.State.Settings.DefaultOpacity = 75; repository.State.Settings.HideWindowOnCapture = false; repository.Save();
                     Repository reloaded = new Repository(root);
                     Assert(reloaded.State.Captures.Count == 1 && reloaded.State.Settings.DefaultOpacity == 75, "save reload");
+                    Assert(!reloaded.State.Settings.HideWindowOnCapture, "capture window visibility setting did not reload");
                     string orphan = reloaded.StoreImage(image); reloaded.CleanOrphans();
                     Assert(!File.Exists(reloaded.ImagePath(orphan)), "orphan remains");
                     Assert(File.Exists(reloaded.ImagePath(file)), "referenced image removed");
@@ -241,6 +242,7 @@ namespace Pinlight
                 Repository store = new Repository(root);
                 Assert(store.State.Settings.CaptureKey == (int)Keys.F1 && store.State.Settings.PinKey == (int)Keys.F3, "legacy hotkey defaults missing");
                 Assert(!store.State.Settings.Magnifier && store.State.Settings.DefaultOpacity == 80, "legacy settings changed");
+                Assert(store.State.Settings.HideWindowOnCapture, "legacy capture visibility default missing");
             });
             Check("EFS workspace repeated atomic commits preserve data", delegate
             {
@@ -333,6 +335,37 @@ namespace Pinlight
                     finally { app.Exit(); app.Dispose(); background.Close(); }
                 }
             });
+            Check("capture visibility setting controls workspace hiding and capture exclusion", delegate
+            {
+                string workspace = Path.Combine(output, "capture-visibility-" + Guid.NewGuid().ToString("N"));
+                AppContext app = new AppContext(workspace, null, false);
+                try
+                {
+                    app.Window.ShowView("settings"); Pump(100);
+                    CheckBox option = null;
+                    Action<Control> visit = null;
+                    visit = delegate(Control parent)
+                    {
+                        foreach (Control control in parent.Controls)
+                        {
+                            if (control is CheckBox && control.Text == "截图时隐藏 Pinlight 窗口") option = (CheckBox)control;
+                            visit(control);
+                        }
+                    };
+                    visit(app.Window);
+                    Assert(option != null && option.Checked, "capture visibility option missing");
+                    option.Checked = false; Pump(80);
+                    Assert(!app.Store.State.Settings.HideWindowOnCapture, "capture visibility option not applied");
+                    Assert(Native.CaptureAffinity(app.Window.Handle) == 0, "workspace remains excluded from capture");
+                    app.BeginCapture(0); Pump(800);
+                    CaptureForm editor = (CaptureForm)typeof(AppContext).GetField("capture", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(app);
+                    Assert(editor != null && editor.Visible, "capture editor missing");
+                    Assert(app.Window.Visible, "workspace was hidden despite the disabled option");
+                    editor.Close(); Pump(150);
+                    Assert(!new Repository(workspace).State.Settings.HideWindowOnCapture, "capture visibility option was not saved");
+                }
+                finally { app.Exit(); app.Dispose(); }
+            });
             Check("copy closes successfully even when history file is locked", delegate
             {
                 string root = Path.Combine(output, "locked-" + Guid.NewGuid().ToString("N"));
@@ -371,6 +404,35 @@ namespace Pinlight
                     Press(Keys.F3); Pump(50);
                     Assert(inputs[0].Combination == Keys.F3, "current global shortcut intercepted recorder input");
                     app.Window.Focus(); app.ResumeHotkeys();
+                }
+                finally { app.Exit(); app.Dispose(); }
+            });
+            Check("main toolbar uses transient capture highlight and avoids duplicate view rebuilds", delegate
+            {
+                AppContext app = new AppContext(Path.Combine(output, "toolbar-" + Guid.NewGuid().ToString("N")), null, false);
+                try
+                {
+                    List<SoftButton> buttons = new List<SoftButton>();
+                    Action<Control> visit = null;
+                    visit = delegate(Control parent)
+                    {
+                        foreach (Control control in parent.Controls)
+                        {
+                            SoftButton button = control as SoftButton;
+                            if (button != null) buttons.Add(button);
+                            visit(control);
+                        }
+                    };
+                    visit(app.Window);
+                    SoftButton capture = buttons.Find(delegate(SoftButton button) { return button.Text == "截图"; });
+                    Assert(capture != null && !capture.Primary, "capture button is permanently highlighted");
+                    ContextMenuStrip delayMenu = (ContextMenuStrip)typeof(MainForm).GetField("delayMenu", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(app.Window);
+                    Assert(delayMenu.Items.Count == 3 && delayMenu.Items[0].Text == "3 秒" && delayMenu.Items[1].Text == "5 秒" && delayMenu.Items[2].Text == "10 秒", "delay choices missing");
+                    Panel content = (Panel)typeof(MainForm).GetField("content", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(app.Window);
+                    Control current = content.Controls.Count > 0 ? content.Controls[0] : null;
+                    Assert(current != null, "history view missing");
+                    typeof(MainForm).GetMethod("OpenView", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(app.Window, new object[] { "history" });
+                    Assert(ReferenceEquals(current, content.Controls[0]), "duplicate view rebuild");
                 }
                 finally { app.Exit(); app.Dispose(); }
             });

@@ -11,11 +11,12 @@ namespace Pinlight
     internal sealed class MainForm : Form
     {
         private readonly AppContext app;
-        private readonly Panel content = new Panel();
+        private readonly Panel content = new BufferedPanel();
         private readonly Label status = Theme.Label("就绪", 12, Theme.Muted);
         private readonly Dictionary<string, SoftButton> navigation = new Dictionary<string, SoftButton>();
+        private readonly ContextMenuStrip delayMenu;
         private string view = "history";
-        private bool reallyClose;
+        private bool reallyClose, initialShowPending = true;
         private DataGridView grid;
         private PictureBox preview;
         private CaptureRecord currentCapture;
@@ -23,23 +24,33 @@ namespace Pinlight
         internal MainForm(AppContext context)
         {
             app = context; Text = "Pinlight";
-            AutoScaleMode = AutoScaleMode.None; Font = Theme.Font(14);
+            AutoScaleMode = AutoScaleMode.None; DoubleBuffered = true; Font = Theme.Font(14);
             BackColor = Theme.Paper; ForeColor = Theme.Ink;
             ClientSize = new Size(1040, 640); MinimumSize = new Size(800, 510);
-            StartPosition = FormStartPosition.CenterScreen; Icon = app.AppIcon;
+            StartPosition = FormStartPosition.Manual;
+            Location = new Point(-32000, -32000);
+            Icon = app.AppIcon;
+            delayMenu = new ContextMenuStrip { Font = Theme.Font(13) };
+            Theme.ConfigureMenu(delayMenu);
+            foreach (int seconds in new int[] { 3, 5, 10 })
+            {
+                int delay = seconds;
+                delayMenu.Items.Add(delay + " 秒", null, delegate { delayMenu.Close(); app.BeginCapture(delay); });
+            }
             FlowLayoutPanel commands = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 53, Padding = new Padding(9, 8, 5, 5), WrapContents = false, BackColor = Theme.Paper };
-            Command(commands, "截图", delegate { app.BeginCapture(0); }, true);
-            Command(commands, "延时截图", delegate { app.BeginCapture(3); }, false);
+            Command(commands, "截图", delegate { app.BeginCapture(0); }, false);
+            SoftButton delayed = null;
+            delayed = Command(commands, "延时截图", delegate { delayMenu.Show(delayed, new Point(0, delayed.Height + 1)); }, false);
             Command(commands, "剪贴板贴图", app.PasteClipboard, false);
             Command(commands, "导入", app.ImportPicture, false);
             Command(commands, "复制", delegate { if (currentCapture != null) app.CopyCapture(currentCapture); else if (currentPin != null) currentPin.CopyImage(); }, false);
             Command(commands, "另存为", delegate { if (currentCapture != null) app.ExportCapture(currentCapture); else if (currentPin != null) currentPin.ExportImage(); }, false);
-            Command(commands, "设置", delegate { ShowView("settings"); }, false);
+            Command(commands, "设置", delegate { OpenView("settings"); }, false);
             FlowLayoutPanel tabs = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 35, Padding = new Padding(9, 0, 5, 0), WrapContents = false };
             string[] ids = { "history", "pins", "favorites" }, labels = { "截图历史", "贴图", "收藏" };
             for (int i = 0; i < ids.Length; i++)
             {
-                string id = ids[i]; SoftButton button = Command(tabs, labels[i], delegate { ShowView(id); }, false);
+                string id = ids[i]; SoftButton button = Command(tabs, labels[i], delegate { OpenView(id); }, false);
                 button.Height = 28; button.Width = 88; navigation[id] = button;
             }
             content.Dock = DockStyle.Fill; content.Padding = new Padding(10, 3, 10, 9);
@@ -48,13 +59,45 @@ namespace Pinlight
             Controls.Add(content); Controls.Add(tabs); Controls.Add(commands); Controls.Add(footer);
             ShowView("history");
         }
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.ExStyle |= 0x02000000;
+                return parameters;
+            }
+        }
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Theme.Paper);
+        }
         private SoftButton Command(FlowLayoutPanel parent, string text, Action action, bool primary)
         {
             SoftButton button = new SoftButton(text, primary) { Width = text.Length > 4 ? 113 : 87, Height = 34, Margin = new Padding(0, 0, 8, 0) };
             button.Click += delegate { try { action(); } catch (Exception error) { app.Store.Log(error); SetStatus(error.Message); } };
             parent.Controls.Add(button); return button;
         }
-        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Native.PrepareWindow(Handle, true); }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Native.PrepareWindow(Handle, app.Store.State.Settings.HideWindowOnCapture);
+        }
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (!initialShowPending) return;
+            initialShowPending = false;
+            PerformLayout();
+            Refresh();
+            BeginInvoke(new Action(delegate
+            {
+                if (IsDisposed) return;
+                Rectangle area = Screen.PrimaryScreen.WorkingArea;
+                Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + (area.Height - Height) / 2);
+                Activate();
+            }));
+        }
         protected override void OnDeactivate(EventArgs e) { app.ResumeHotkeys(); base.OnDeactivate(e); }
         protected override void OnActivated(EventArgs e)
         {
@@ -72,20 +115,39 @@ namespace Pinlight
         }
         internal void SetStatus(string text) { status.Text = text; }
         internal void RefreshView() { if (!IsDisposed && Visible) ShowView(view); }
+        private void OpenView(string name)
+        {
+            if (name == "overview") name = "history";
+            if (view == name && content.Controls.Count > 0) return;
+            ShowView(name);
+        }
         internal void ShowView(string name)
         {
             app.ResumeHotkeys();
             if (name == "overview") name = "history";
             view = name; currentCapture = null; currentPin = null;
             if (preview != null) { Image image = preview.Image; preview.Image = null; if (image != null) image.Dispose(); preview = null; }
-            grid = null; content.SuspendLayout();
-            Control[] old = new Control[content.Controls.Count]; content.Controls.CopyTo(old, 0);
-            content.Controls.Clear(); foreach (Control control in old) control.Dispose();
-            foreach (KeyValuePair<string, SoftButton> entry in navigation) { entry.Value.Selected = entry.Key == name; entry.Value.Invalidate(); }
-            if (name == "settings") BuildSettings();
-            else if (name == "guide") BuildGuide();
-            else BuildCollection(name);
-            content.ResumeLayout(true);
+            grid = null; bool redraw = content.IsHandleCreated;
+            if (redraw) Native.SetRedraw(content.Handle, false);
+            content.SuspendLayout();
+            try
+            {
+                Control[] old = new Control[content.Controls.Count]; content.Controls.CopyTo(old, 0);
+                content.Controls.Clear(); foreach (Control control in old) control.Dispose();
+                foreach (KeyValuePair<string, SoftButton> entry in navigation) { entry.Value.Selected = entry.Key == name; entry.Value.Invalidate(); }
+                if (name == "settings") BuildSettings();
+                else if (name == "guide") BuildGuide();
+                else BuildCollection(name);
+            }
+            finally
+            {
+                content.ResumeLayout(true);
+                if (redraw)
+                {
+                    Native.SetRedraw(content.Handle, true);
+                    content.Invalidate(true); content.Update();
+                }
+            }
         }
         private void BuildCollection(string name)
         {
@@ -163,36 +225,58 @@ namespace Pinlight
             AddCheck(body, "显示放大镜", settings.Magnifier, 15, delegate(bool value) { settings.Magnifier = value; app.Save(); });
             AddCheck(body, "保存截图历史", settings.SaveHistory, 51, delegate(bool value) { settings.SaveHistory = value; app.Save(); });
             AddCheck(body, "启动时恢复贴图", settings.RestorePins, 87, delegate(bool value) { settings.RestorePins = value; app.Save(); });
-            Label opacity = Theme.Label("默认不透明度", 14, Theme.Ink); opacity.SetBounds(15, 130, 180, 28); body.Controls.Add(opacity);
+            AddCheck(body, "截图时隐藏 Pinlight 窗口", settings.HideWindowOnCapture, 123, delegate(bool value)
+            {
+                settings.HideWindowOnCapture = value;
+                Native.PrepareWindow(Handle, value);
+                app.Save();
+            });
+            bool startupReverting = false;
+            CheckBox startup = null;
+            startup = AddCheck(body, "开机自动启动（后台托盘）", StartupManager.IsEnabled(), 159, delegate(bool value)
+            {
+                if (startupReverting) return;
+                string error;
+                if (!StartupManager.SetEnabled(value, out error))
+                {
+                    startupReverting = true;
+                    startup.Checked = !value;
+                    startupReverting = false;
+                    MessageBox.Show(this, error, "Pinlight", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                SetStatus(value ? "已开启开机自启动" : "已关闭开机自启动");
+            });
+            Label opacity = Theme.Label("默认不透明度", 14, Theme.Ink); opacity.SetBounds(15, 193, 180, 28); body.Controls.Add(opacity);
             NumericUpDown number = new NumericUpDown { Minimum = 10, Maximum = 100, Value = settings.DefaultOpacity, Increment = 5, Font = Theme.Font(14), BackColor = Theme.Surface, ForeColor = Theme.Ink };
-            number.SetBounds(230, 131, 95, 28); body.Controls.Add(number); number.ValueChanged += delegate { settings.DefaultOpacity = (int)number.Value; app.Save(); };
-            Label heading = Theme.Label("快捷键", 16, Theme.Ink); heading.SetBounds(15, 182, 250, 31); body.Controls.Add(heading);
-            Label hint = Theme.Label("点击输入框后按组合键，再点应用。", 12, Theme.Muted); hint.SetBounds(15, 216, 450, 25); body.Controls.Add(hint);
+            number.SetBounds(230, 194, 95, 28); body.Controls.Add(number); number.ValueChanged += delegate { settings.DefaultOpacity = (int)number.Value; app.Save(); };
+            Label heading = Theme.Label("快捷键", 16, Theme.Ink); heading.SetBounds(15, 231, 250, 31); body.Controls.Add(heading);
+            Label hint = Theme.Label("点击输入框后按组合键，再点应用。", 12, Theme.Muted); hint.SetBounds(15, 264, 450, 25); body.Controls.Add(hint);
             Keys[] current = KeyBindings.Get(settings); HotkeyInput[] inputs = new HotkeyInput[4];
             for (int i = 0; i < inputs.Length; i++)
             {
-                Label label = Theme.Label(KeyBindings.Labels[i], 14, Theme.Ink); label.SetBounds(15, 253 + i * 41, 200, 28); body.Controls.Add(label);
-                inputs[i] = new HotkeyInput(current[i]); inputs[i].SetBounds(230, 254 + i * 41, 205, 28); body.Controls.Add(inputs[i]);
+                Label label = Theme.Label(KeyBindings.Labels[i], 14, Theme.Ink); label.SetBounds(15, 296 + i * 39, 200, 28); body.Controls.Add(label);
+                inputs[i] = new HotkeyInput(current[i]); inputs[i].SetBounds(230, 297 + i * 39, 205, 28); body.Controls.Add(inputs[i]);
                 inputs[i].Enter += delegate { app.SuspendHotkeys(); };
                 inputs[i].Leave += delegate { app.ResumeHotkeys(); };
             }
-            Label result = Theme.Label("", 12, Theme.Muted); result.SetBounds(15, 472, 640, 30); body.Controls.Add(result);
-            SoftButton apply = new SoftButton("应用快捷键", true); apply.SetBounds(230, 429, 112, 32); body.Controls.Add(apply);
+            Label result = Theme.Label("", 12, Theme.Muted); result.SetBounds(15, 491, 640, 30); body.Controls.Add(result);
+            SoftButton apply = new SoftButton("应用快捷键", true); apply.SetBounds(230, 451, 112, 32); body.Controls.Add(apply);
             apply.Click += delegate
             {
                 Keys[] requested = new Keys[4]; for (int i = 0; i < 4; i++) requested[i] = inputs[i].Combination;
                 string error; bool success = app.UpdateHotkeys(requested, out error);
                 result.ForeColor = success ? Theme.Green : Color.Salmon; result.Text = success ? "已应用" : error;
             };
-            SoftButton reset = new SoftButton("恢复默认", false); reset.SetBounds(350, 429, 85, 32); body.Controls.Add(reset);
+            SoftButton reset = new SoftButton("恢复默认", false); reset.SetBounds(350, 451, 85, 32); body.Controls.Add(reset);
             reset.Click += delegate { Keys[] defaults = KeyBindings.Get(new Settings()); for (int i = 0; i < 4; i++) { inputs[i].Combination = defaults[i]; inputs[i].Text = KeyBindings.Format(defaults[i]); } };
-            SoftButton folder = new SoftButton("数据目录", false); folder.SetBounds(15, 514, 110, 32); body.Controls.Add(folder); folder.Click += delegate { Process.Start("explorer.exe", app.Store.Root); };
+            SoftButton folder = new SoftButton("数据目录", false); folder.SetBounds(15, 530, 110, 32); body.Controls.Add(folder); folder.Click += delegate { Process.Start("explorer.exe", app.Store.Root); };
             SetStatus("设置");
         }
-        private static void AddCheck(Panel panel, string text, bool value, int y, Action<bool> changed)
+        private static CheckBox AddCheck(Panel panel, string text, bool value, int y, Action<bool> changed)
         {
             CheckBox check = new CheckBox { Text = text, Checked = value, Font = Theme.Font(14), ForeColor = Theme.Ink, AutoSize = true, Location = new Point(15, y) };
-            check.CheckedChanged += delegate { changed(check.Checked); }; panel.Controls.Add(check);
+            check.CheckedChanged += delegate { changed(check.Checked); }; panel.Controls.Add(check); return check;
         }
         private void BuildGuide()
         {
@@ -208,6 +292,7 @@ namespace Pinlight
         protected override void Dispose(bool disposing)
         {
             if (disposing && preview != null && preview.Image != null) { Image image = preview.Image; preview.Image = null; image.Dispose(); }
+            if (disposing) delayMenu.Dispose();
             base.Dispose(disposing);
         }
     }

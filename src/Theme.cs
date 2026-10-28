@@ -57,7 +57,10 @@ namespace Pinlight
     internal sealed class SoftButton : Button
     {
         internal bool Primary, Selected;
-        private bool hover;
+        internal bool Swatch;
+        internal int CornerRadius = 3;
+        internal Color BorderColor = Theme.Line;
+        private bool hover, pressed;
         internal SoftButton(string text, bool primary)
         {
             Text = text; Primary = primary; Font = Theme.Font(13); Height = 38; Cursor = Cursors.Hand;
@@ -67,16 +70,65 @@ namespace Pinlight
         }
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) { pressed = true; Invalidate(); }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left) { pressed = false; Invalidate(); }
+            base.OnMouseUp(e);
+        }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { pressed = true; Invalidate(); }
+            base.OnKeyDown(e);
+        }
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { pressed = false; Invalidate(); }
+            base.OnKeyUp(e);
+        }
+        protected override void OnLostFocus(EventArgs e) { pressed = false; Invalidate(); base.OnLostFocus(e); }
+        protected override void OnEnabledChanged(EventArgs e) { if (!Enabled) pressed = false; Invalidate(); base.OnEnabledChanged(e); }
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(Parent == null ? Theme.Paper : Parent.BackColor);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Color fill = Primary ? (hover ? Color.FromArgb(68, 128, 160) : Theme.Green) : (Selected || hover ? Theme.Mint : BackColor);
+            Color fill, border, text;
+            if (!Enabled)
+            {
+                fill = BackColor; border = Theme.Line; text = Color.FromArgb(105, 109, 112);
+            }
+            else if (Primary)
+            {
+                fill = pressed ? Color.FromArgb(51, 111, 140) : hover ? Color.FromArgb(68, 128, 160) : Theme.Green;
+                border = pressed || hover ? Color.FromArgb(112, 171, 198) : Color.FromArgb(80, 142, 171);
+                text = Color.White;
+            }
+            else
+            {
+                fill = Swatch ? (Selected || pressed ? Theme.Cream : hover ? Theme.Mint : BackColor) : (Selected || pressed || hover ? Theme.Mint : BackColor);
+                border = Selected || pressed ? Theme.Green : BorderColor;
+                text = Swatch ? ForeColor : Selected || pressed ? Theme.Green : ForeColor;
+            }
             Rectangle rectangle = new Rectangle(0, 0, Width - 1, Height - 1);
-            Theme.Card(e.Graphics, rectangle, fill, 3);
-            Color text = !Enabled ? Color.FromArgb(105, 109, 112) : Primary ? Color.White : Selected ? Theme.Green : ForeColor;
+            using (GraphicsPath path = Theme.Round(rectangle, CornerRadius)) using (Brush brush = new SolidBrush(fill)) using (Pen pen = new Pen(border))
+            {
+                e.Graphics.FillPath(brush, path); e.Graphics.DrawPath(pen, path);
+            }
             TextRenderer.DrawText(e.Graphics, Text, Font, rectangle, text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
             if (Focused) using (Pen pen = new Pen(Theme.Green) { DashStyle = DashStyle.Dot }) e.Graphics.DrawRectangle(pen, 3, 3, Width - 7, Height - 7);
+        }
+    }
+    internal sealed class BufferedPanel : Panel
+    {
+        internal BufferedPanel()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+            UpdateStyles();
         }
     }
     internal sealed class InputDialog : Form

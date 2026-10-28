@@ -20,7 +20,7 @@ namespace Pinlight
         private readonly EventWaitHandle signal;
         private CaptureForm capture;
         private StickerForm activePin;
-        private bool pinsHidden, closing, capturePending, mainWasVisible;
+        private bool pinsHidden, closing, capturePending, captureHidesWindow, mainWasVisible;
         private DateTime hiddenAt;
         private int captureDelay;
 
@@ -118,8 +118,9 @@ namespace Pinlight
         {
             if (closing || capturePending || (capture != null && !capture.IsDisposed)) return;
             mainWasVisible = Window.Visible; capturePending = true;
-            Native.PrepareWindow(Window.Handle, true);
-            Window.Hide();
+            captureHidesWindow = Store.State.Settings.HideWindowOnCapture;
+            Native.PrepareWindow(Window.Handle, captureHidesWindow);
+            if (captureHidesWindow) Window.Hide();
             hiddenAt = DateTime.UtcNow; captureDelay = delaySeconds > 0 ? delaySeconds * 1000 : 320;
             captureTimer.Interval = captureDelay;
             captureTimer.Start();
@@ -127,9 +128,11 @@ namespace Pinlight
         private void StartCapture()
         {
             if (closing) return;
-            if (Native.IsWindowVisible(Window.Handle) || (DateTime.UtcNow - hiddenAt).TotalMilliseconds < captureDelay)
+            bool waitingForHide = captureHidesWindow && Native.IsWindowVisible(Window.Handle);
+            if (waitingForHide || (DateTime.UtcNow - hiddenAt).TotalMilliseconds < captureDelay)
             {
-                Window.Hide(); captureTimer.Interval = 60; captureTimer.Start(); return;
+                if (captureHidesWindow) Window.Hide();
+                captureTimer.Interval = 60; captureTimer.Start(); return;
             }
             Bitmap image = null;
             try

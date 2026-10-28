@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Windows screenshot and pin-to-screen utility")]
 [assembly: AssemblyCompany("Pinlight")]
 [assembly: AssemblyProduct("Pinlight")]
-[assembly: AssemblyVersion("0.3.2.0")]
-[assembly: AssemblyFileVersion("0.3.2.0")]
+[assembly: AssemblyVersion("0.3.9.0")]
+[assembly: AssemblyFileVersion("0.3.9.0")]
 
 namespace Pinlight
 {
@@ -39,7 +39,13 @@ namespace Pinlight
                 };
                 try
                 {
-                    context = new AppContext(root, activate, hidden); Application.Run(context);
+                    context = new AppContext(root, activate, hidden);
+                    if (!test)
+                    {
+                        try { StartupManager.RefreshExisting(); }
+                        catch (Exception error) { context.Store.Log(error); }
+                    }
+                    Application.Run(context);
                     return 0;
                 }
                 catch (Exception error)

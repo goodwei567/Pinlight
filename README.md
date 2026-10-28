@@ -1,6 +1,6 @@
 # Pinlight
 
-Pinlight is a lightweight, offline screenshot and pin-to-screen utility for Windows. It provides region capture, annotations, floating image pins, persistent local history, custom global shortcuts, and scrolling capture with a live side preview.
+Pinlight is a lightweight, offline screenshot and pin-to-screen utility for Windows. It provides region capture, annotations, floating image pins, persistent local history, configurable global shortcuts, and scrolling capture with a live side preview.
 
 [Download the latest release](https://github.com/goodwei567/Pinlight/releases/latest)
 
@@ -8,18 +8,20 @@ Pinlight is a lightweight, offline screenshot and pin-to-screen utility for Wind
 
 ## Screenshots
 
-| Workspace | Scrolling capture |
-| --- | --- |
-| ![Pinlight workspace](docs/screenshots/workspace.png) | ![Scrolling capture with live preview](docs/screenshots/scrolling-capture.png) |
+| Workspace | Capture editor | Scrolling capture |
+| --- | --- | --- |
+| ![Pinlight workspace](docs/screenshots/workspace.png) | ![Pinlight capture editor](docs/screenshots/capture-editor.png) | ![Scrolling capture with live preview](docs/screenshots/scrolling-capture.png) |
 
 ## Features
 
 - Pixel-accurate region capture with automatic desktop-composition refresh.
 - Rectangle, ellipse, arrow, pen, highlight, text, step marker, mosaic, and blur tools.
 - Undo and redo for annotations, including editable and movable text.
+- Delayed capture with 3, 5, and 10 second choices.
 - Scrolling capture for long pages and documents, with a live side preview.
 - Pin screenshots above other windows, with zoom, opacity, rotation, and click-through.
 - Four configurable global shortcuts with conflict detection and safe rollback.
+- Optional launch at Windows sign-in, starting quietly in the system tray.
 - Local screenshot history, favorites, export, copy, and restoration of pins.
 - Offline operation with no account, telemetry, or network access.
 
@@ -33,7 +35,7 @@ The current application interface is in Simplified Chinese.
 ## Install
 
 1. Open the [latest release](https://github.com/goodwei567/Pinlight/releases/latest).
-2. Download `Pinlight-v0.3.2-win-x64.zip`.
+2. Download `Pinlight-v0.3.9-win-x64.zip`.
 3. Extract the archive and run `Pinlight.exe`.
 
 Pinlight does not require administrator privileges. The executable is currently unsigned, so Windows SmartScreen may show an unknown publisher warning.
@@ -58,6 +60,8 @@ All four shortcuts can be changed in Settings.
 3. Press `Enter` to copy, `Ctrl+S` to save, or use the pin button.
 4. Press `Esc` to cancel. Use `Ctrl+Z` and `Ctrl+Y` to undo or redo.
 
+Use the delay menu on the workspace toolbar for 3, 5, or 10 second captures. The selected frame and annotation toolbar use a compact dark theme that preserves the desktop colors in the capture.
+
 ### Scrolling capture
 
 1. Press `F1` and select only the scrollable content. Fixed headers and toolbars should be outside the selection.
@@ -65,9 +69,13 @@ All four shortcuts can be changed in Settings.
 3. Scroll down continuously inside the selected region. A live preview appears beside the region.
 4. When finished, copy, save, or pin the long capture.
 
-Pinlight samples the selected region about every 30 ms. Consecutive frames need a small visible overlap. Extremely fast jumps, animations, moving windows, and changes to the window size or zoom can prevent stitching; if the app reports that it is waiting for overlap, scroll back slightly and continue.
+Pinlight samples the selected region about every 30 ms. Consecutive frames need a small visible overlap. Extremely fast jumps, animations, moving windows, changes to window size, and zoom changes can prevent stitching. If the app reports that it is waiting for overlap, scroll back slightly and continue.
 
 Scrolling capture supports downward growth only. The maximum result is 30,000 pixels high and 50 million pixels total. Export is lossless PNG at physical screen pixels.
+
+### Startup and settings
+
+In **Settings**, enable **Start with Windows (tray)** to add a per-user startup entry. Pinlight starts hidden in the system tray at Windows sign-in. No administrator permission is required, and disabling the option removes the entry immediately. When a newer Pinlight build is opened, an existing startup entry is updated to that build automatically.
 
 ## Data and privacy
 
@@ -108,14 +116,14 @@ The test suite uses the real desktop, clipboard, global hotkeys, and temporary w
 .\build\Pinlight.exe --self-test .\test-output
 ```
 
-The report is written to `test-output\self-test-report.txt`. Version 0.3.2 passes 38 automated checks.
+The report is written to `test-output\self-test-report.txt`. Version 0.3.9 passes 40 automated checks.
 
 ## Known limitations
 
 - Screen capture currently uses GDI + `CopyFromScreen`.
 - Mixed-DPI multi-monitor layouts, HDR color, and protected content have not been fully validated.
 - Scrolling capture cannot reconstruct content with no overlapping pixels between samples.
-- The application is unsigned and has no automatic updater.
+- The application is unsigned and has no built-in automatic updater.
 
 ## License
 
@@ -130,4 +138,3 @@ docs/            Repository screenshots
 release-assets/  Local release files for GitHub Releases
 build.ps1        Reproducible Windows build script
 ```
-"# Pinlight" 

@@ -41,15 +41,34 @@ namespace Pinlight
         private SoftButton Add(FlowLayoutPanel panel, string text, int width, Action action)
         {
             SoftButton button = new SoftButton(text, false); button.Font = Theme.Font(12);
-            button.Size = new Size(width, 33); button.Margin = new Padding(2, 3, 0, 3);
+            button.Size = new Size(width, 34); button.Margin = new Padding(2, 4, 2, 4);
+            button.CornerRadius = 4; button.BorderColor = Color.FromArgb(72, 72, 72);
             button.Click += delegate { action(); if (!IsDisposed && Visible) Focus(); }; panel.Controls.Add(button); return button;
+        }
+        private static void Divider(FlowLayoutPanel panel)
+        {
+            panel.Controls.Add(new Panel { Size = new Size(1, 22), Margin = new Padding(5, 12, 5, 0), BackColor = Theme.Line });
+        }
+        private static void PropertyLabel(FlowLayoutPanel panel, string text, int width)
+        {
+            Label label = Theme.Label(text, 11, Theme.Muted);
+            label.Size = new Size(width, 34); label.Margin = new Padding(5, 4, 1, 4);
+            label.TextAlign = ContentAlignment.MiddleLeft; panel.Controls.Add(label);
+        }
+        private static void PaintBar(object sender, PaintEventArgs e)
+        {
+            Control bar = (Control)sender;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (Pen border = new Pen(Color.FromArgb(190, Theme.Line)))
+                e.Graphics.DrawRectangle(border, 0, 0, Math.Max(1, bar.Width - 1), Math.Max(1, bar.Height - 1));
         }
         private void BuildToolbar()
         {
             toolbar.BackColor = properties.BackColor = Theme.Surface;
-            toolbar.Size = new Size(920, 44); properties.Size = new Size(534, 42);
-            toolbar.Padding = properties.Padding = new Padding(3, 2, 3, 2);
+            toolbar.Size = new Size(980, 50); properties.Size = new Size(640, 42);
+            toolbar.Padding = new Padding(6, 4, 6, 4); properties.Padding = new Padding(4, 2, 6, 2);
             toolbar.WrapContents = properties.WrapContents = false;
+            toolbar.Paint += PaintBar; properties.Paint += PaintBar;
             toolbar.Visible = properties.Visible = false; Controls.Add(toolbar); Controls.Add(properties);
             Tool[] tools = { Tool.Select, Tool.Rectangle, Tool.Ellipse, Tool.Arrow, Tool.Pen, Tool.Highlight, Tool.Text, Tool.Step, Tool.Mosaic, Tool.Blur };
             string[] labels = { "选择", "矩形", "椭圆", "箭头", "画笔", "高亮", "文字", "序号", "马赛克", "柔化" };
@@ -58,7 +77,9 @@ namespace Pinlight
                 Tool value = tools[i];
                 buttons[value] = Add(toolbar, labels[i], value == Tool.Mosaic ? 53 : 43, delegate { tool = value; selected = -1; UpdateTools(); Invalidate(); });
             }
+            Divider(toolbar);
             undo = Add(toolbar, "撤销", 43, Undo); redo = Add(toolbar, "重做", 43, Redo);
+            Divider(toolbar);
             Add(toolbar, "滚动截图", 75, StartScrollCapture);
             Add(toolbar, "贴图", 60, delegate { Complete("pin"); });
             Add(toolbar, "保存", 47, delegate { Complete("save"); });
@@ -72,21 +93,29 @@ namespace Pinlight
             {
                 toolbar.Width = minimumScreenWidth - 8;
                 toolbar.WrapContents = true;
-                toolbar.Height = 86;
+                toolbar.Height = 96;
             }
+            PropertyLabel(properties, "粗细", 34);
             foreach (int width in new int[] { 3, 6, 10 })
             {
                 int value = width; SoftButton b = Add(properties, width == 3 ? "细" : width == 6 ? "中" : "粗", 31, delegate { stroke = value; ApplyProperties(); }); b.Tag = value;
             }
+            Divider(properties);
+            PropertyLabel(properties, "颜色", 34);
             foreach (Color swatch in new Color[] { color, Color.Orange, Color.Gold, Theme.Green, Color.SteelBlue, Color.MediumPurple, Color.White })
             {
                 Color value = swatch; SoftButton b = Add(properties, "●", 32, delegate { color = value; ApplyProperties(); });
-                b.Tag = value; b.ForeColor = value; b.Font = Theme.Font(22);
+                b.Tag = value; b.ForeColor = value; b.Font = Theme.Font(22); b.Swatch = true;
             }
-            ComboBox fonts = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(13), Width = 86, Margin = new Padding(8, 7, 3, 3), BackColor = Theme.Surface, ForeColor = Theme.Ink, FlatStyle = FlatStyle.Flat };
+            Divider(properties);
+            PropertyLabel(properties, "字号", 34);
+            ComboBox fonts = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Font = Theme.Font(12), Width = 86, Margin = new Padding(4, 7, 3, 3), BackColor = Theme.Surface, ForeColor = Theme.Ink, FlatStyle = FlatStyle.Flat };
             fonts.Items.AddRange(new object[] { "20 px", "28 px", "40 px", "56 px" }); fonts.SelectedIndex = 1;
             fonts.SelectedIndexChanged += delegate { fontSize = new int[] { 20, 28, 40, 56 }[fonts.SelectedIndex]; ApplyProperties(); };
-            properties.Controls.Add(fonts); UpdateTools();
+            properties.Controls.Add(fonts);
+            int propertyWidth = 10; foreach (Control control in properties.Controls) propertyWidth += control.Width + control.Margin.Horizontal;
+            properties.Width = propertyWidth;
+            UpdateTools();
         }
         private void ApplyProperties()
         {
@@ -122,12 +151,48 @@ namespace Pinlight
         {
             int l = selection.Left, t = selection.Top, r = selection.Right - 1, b = selection.Bottom - 1, mx = (l + r) / 2, my = (t + b) / 2;
             Point[] points = { new Point(l, t), new Point(mx, t), new Point(r, t), new Point(r, my), new Point(r, b), new Point(mx, b), new Point(l, b), new Point(l, my) };
-            return Array.ConvertAll(points, delegate(Point p) { return new Rectangle(p.X - 3, p.Y - 3, 6, 6); });
+            return Array.ConvertAll(points, delegate(Point p) { return new Rectangle(p.X - 4, p.Y - 4, 8, 8); });
+        }
+        private void DrawSizeLabel(Graphics graphics)
+        {
+            string text = selection.Width + " × " + selection.Height + " px";
+            using (Font font = Theme.Font(12))
+            {
+                Size measured = TextRenderer.MeasureText(text, font);
+                int width = Math.Max(116, measured.Width + 23);
+                int x = Math.Max(4, Math.Min(selection.Left, ClientSize.Width - width - 4));
+                int y = selection.Top >= 35 ? selection.Top - 31 : selection.Top + 9;
+                Rectangle label = new Rectangle(x, y, width, 26);
+                using (GraphicsPath path = Theme.Round(label, 5))
+                using (Brush fill = new SolidBrush(Color.FromArgb(238, Theme.Surface)))
+                using (Pen border = new Pen(Color.FromArgb(205, Theme.Line)))
+                {
+                    graphics.FillPath(fill, path); graphics.DrawPath(border, path);
+                }
+                using (Brush accent = new SolidBrush(Theme.Green)) graphics.FillRectangle(accent, label.X + 1, label.Y + 6, 3, label.Height - 12);
+                Theme.Text(graphics, text, 12, Theme.Ink, new Rectangle(label.X + 10, label.Y, label.Width - 15, label.Height), ContentAlignment.MiddleLeft);
+            }
+        }
+        private void DrawSelectionFrame(Graphics graphics)
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle edge = new Rectangle(selection.X, selection.Y, Math.Max(1, selection.Width - 1), Math.Max(1, selection.Height - 1));
+            using (Pen shadow = new Pen(Color.FromArgb(150, Color.Black), 3)) graphics.DrawRectangle(shadow, edge);
+            using (Pen accent = new Pen(Theme.Green, 2)) graphics.DrawRectangle(accent, edge);
+            foreach (Rectangle handle in Handles())
+            {
+                Rectangle shadow = handle; shadow.Offset(0, 1);
+                using (GraphicsPath path = Theme.Round(shadow, 3)) using (Brush fill = new SolidBrush(Color.FromArgb(115, Color.Black))) graphics.FillPath(fill, path);
+                using (GraphicsPath path = Theme.Round(handle, 3)) using (Brush fill = new SolidBrush(Theme.Ink)) using (Pen border = new Pen(Theme.Green))
+                {
+                    graphics.FillPath(fill, path); graphics.DrawPath(border, path);
+                }
+            }
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics; g.DrawImageUnscaled(source, 0, 0);
-            using (Region outside = new Region(ClientRectangle)) using (Brush dim = new SolidBrush(Color.FromArgb(100, 15, 27, 20)))
+            using (Region outside = new Region(ClientRectangle)) using (Brush dim = new SolidBrush(Color.FromArgb(108, 11, 14, 17)))
             {
                 if (selection.Width > 0) outside.Exclude(selection); g.FillRegion(dim, outside);
             }
@@ -135,11 +200,8 @@ namespace Pinlight
             {
                 List<Shape> all = new List<Shape>(shapes); if (draft != null) all.Add(draft);
                 Imaging.DrawShapes(g, source, all, selection);
-                using (Pen border = new Pen(Theme.Green)) g.DrawRectangle(border, selection.X, selection.Y, Math.Max(1, selection.Width - 1), Math.Max(1, selection.Height - 1));
-                foreach (Rectangle handle in Handles()) using (Brush fill = new SolidBrush(Theme.Surface)) using (Pen pen = new Pen(Theme.Green)) { g.FillRectangle(fill, handle); g.DrawRectangle(pen, handle); }
-                Rectangle label = new Rectangle(selection.Left, Math.Max(4, selection.Top - 31), 185, 25);
-                using (Brush fill = new SolidBrush(Theme.Surface)) g.FillRectangle(fill, label);
-                Theme.Text(g, selection.Width + " × " + selection.Height + " px", 13, Theme.Ink, label, ContentAlignment.MiddleCenter);
+                DrawSelectionFrame(g);
+                DrawSizeLabel(g);
                 if (selected >= 0 && selected < shapes.Count)
                 {
                     Rectangle box = shapes[selected].Bounds; box.Inflate(5, 5);
@@ -148,8 +210,11 @@ namespace Pinlight
             }
             else
             {
-                Rectangle hint = new Rectangle(ClientSize.Width / 2 - 225, 32, 450, 45);
-                using (Brush fill = new SolidBrush(Theme.Surface)) g.FillRectangle(fill, hint);
+                Rectangle hint = new Rectangle(ClientSize.Width / 2 - 205, 32, 410, 42);
+                using (GraphicsPath path = Theme.Round(hint, 6)) using (Brush fill = new SolidBrush(Color.FromArgb(238, Theme.Surface))) using (Pen border = new Pen(Color.FromArgb(205, Theme.Line)))
+                {
+                    g.FillPath(fill, path); g.DrawPath(border, path);
+                }
                 Theme.Text(g, "拖动选择区域    Esc 取消", 14, Theme.Ink, hint, ContentAlignment.MiddleCenter);
             }
             if (settings.Magnifier && mode == 0 && !toolbar.Bounds.Contains(mouse)) DrawMagnifier(g);

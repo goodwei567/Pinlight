@@ -9,6 +9,7 @@ namespace Pinlight
     internal static class Native
     {
         internal const int WM_HOTKEY = 0x0312;
+        private const int WM_SETREDRAW = 0x000B;
         internal const int GWL_EXSTYLE = -20;
         internal const long WS_EX_TRANSPARENT = 0x20, WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80;
         [DllImport("user32.dll", SetLastError = true)] internal static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint key);
@@ -29,9 +30,11 @@ namespace Pinlight
         [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
         [DllImport("user32.dll")] internal static extern bool IsWindowVisible(IntPtr window);
         [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowDisplayAffinity(IntPtr window, uint affinity);
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool GetWindowDisplayAffinity(IntPtr window, out uint affinity);
         [DllImport("user32.dll")] private static extern bool RedrawWindow(IntPtr window, IntPtr rect, IntPtr region, uint flags);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool MoveFileEx(string source, string destination, uint flags);
         [DllImport("shell32.dll")] internal static extern IntPtr ExtractIcon(IntPtr instance, string file, int index);
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
         internal static void EnableDpi()
         {
@@ -40,6 +43,11 @@ namespace Pinlight
         }
         internal static void FlushDesktop() { try { DwmFlush(); } catch { } }
         internal static bool ExcludeCapture(IntPtr handle) { return SetWindowDisplayAffinity(handle, 0x11); }
+        internal static uint CaptureAffinity(IntPtr handle)
+        {
+            uint affinity;
+            return GetWindowDisplayAffinity(handle, out affinity) ? affinity : uint.MaxValue;
+        }
         internal static void PrepareWindow(IntPtr handle, bool excludeFromCapture)
         {
             try
@@ -48,7 +56,7 @@ namespace Pinlight
                 DwmSetWindowAttribute(handle, 20, ref value, 4);
                 // Disable only this window's DWM transitions; no system animation settings are changed.
                 DwmSetWindowAttribute(handle, 3, ref value, 4);
-                if (excludeFromCapture) SetWindowDisplayAffinity(handle, 0x11);
+                SetWindowDisplayAffinity(handle, excludeFromCapture ? 0x11u : 0u);
             }
             catch (DllNotFoundException) { }
         }
@@ -56,6 +64,10 @@ namespace Pinlight
         {
             RedrawWindow(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0080 | 0x0100 | 0x0400);
             FlushDesktop(); FlushDesktop();
+        }
+        internal static void SetRedraw(IntPtr handle, bool enabled)
+        {
+            SendMessage(handle, WM_SETREDRAW, enabled ? new IntPtr(1) : IntPtr.Zero, IntPtr.Zero);
         }
         internal static void CommitFile(string source, string destination)
         {

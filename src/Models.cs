@@ -11,6 +11,7 @@ namespace Pinlight
         [DataMember] internal bool Magnifier = true;
         [DataMember] internal bool SaveHistory = true;
         [DataMember] internal bool RestorePins = true;
+        [DataMember] internal bool HideWindowOnCapture = true;
         [DataMember] internal int DefaultOpacity = 100;
         [DataMember] internal int CaptureKey = (int)Keys.F1;
         [DataMember] internal int PinKey = (int)Keys.F3;
@@ -18,7 +19,7 @@ namespace Pinlight
         [DataMember] internal int PassThroughKey = (int)Keys.F4;
         [OnDeserializing] private void BeforeLoad(StreamingContext context)
         {
-            Magnifier = SaveHistory = RestorePins = true; DefaultOpacity = 100;
+            Magnifier = SaveHistory = RestorePins = HideWindowOnCapture = true; DefaultOpacity = 100;
             CaptureKey = (int)Keys.F1; PinKey = (int)Keys.F3;
             VisibilityKey = (int)(Keys.Shift | Keys.F3); PassThroughKey = (int)Keys.F4;
         }
